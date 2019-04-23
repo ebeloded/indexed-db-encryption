@@ -4,6 +4,12 @@ import locker from './locker'
 const schemaBuilder = lf.schema.create('yoroi-encryptable', 1)
 
 schemaBuilder
+  .createTable('Security')
+  .addColumn('id', lf.Type.STRING)
+  .addColumn('value', lf.Type.STRING)
+  .addPrimaryKey(['id'])
+
+schemaBuilder
   .createTable('Wallets')
   .addColumn('id', lf.Type.STRING)
   .addColumn('name', lf.Type.STRING)
