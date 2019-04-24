@@ -1,20 +1,17 @@
 import sjcl from 'sjcl'
 
-const btoa = (s: string) => Buffer.from(s).toString('base64')
-const atob = (b64encoded: string) =>
-  Buffer.from(b64encoded, 'base64').toString()
-
-export default function locker(
-  encryptedCipherBase64String: string = null,
-  password: string = null
-) {
-  console.log({ encryptedCipherBase64: encryptedCipherBase64String, password })
-  if (encryptedCipherBase64String !== null) {
+export default function locker({
+  password,
+  encryptedCipherBase64String,
+}: {
+  password?: string
+  encryptedCipherBase64String?: string
+}) {
+  if (encryptedCipherBase64String) {
     if (!password) throw 'Password is required'
 
+    const passwordHash = hash(password)
     const encryptedCipherString = atob(encryptedCipherBase64String)
-
-    console.log({ encryptedCipherString }) /*?*/
 
     let encryptedCipher: sjcl.SjclCipherEncrypted
 
@@ -26,26 +23,39 @@ export default function locker(
 
     const { salt, iv } = encryptedCipher
     try {
-      sjcl.decrypt(password, encryptedCipherString)
+      const { validationHash } = JSON.parse(
+        sjcl.decrypt(passwordHash, encryptedCipherString)
+      )
+
+      if (hash(passwordHash) !== validationHash) {
+        throw 'Invalid Cipher Contents'
+      }
 
       return {
         encrypt(data: string): string {
           const encryptedCipherData = String(
-            sjcl.encrypt(password, data, { salt, iv })
+            sjcl.encrypt(passwordHash, data, { salt, iv })
           )
 
           const { ct } = JSON.parse(encryptedCipherData)
 
           return ct
         },
-        decrypt(ct: string) {
-          const decryptValue = sjcl.decrypt(password, JSON.stringify({ ct }), {
-            salt,
-            iv,
-          })
+
+        decrypt(ct: string): string {
+          const decryptValue = sjcl.decrypt(
+            passwordHash,
+            JSON.stringify({ ct }),
+            {
+              salt,
+              iv,
+            }
+          )
 
           return decryptValue
         },
+
+        isEncrypted: true,
       }
     } catch (e) {
       throw 'Incorrect password'
@@ -54,42 +64,32 @@ export default function locker(
   return {
     encrypt: (message: string) => message,
     decrypt: (ciphertext: string) => ciphertext,
+    isEncrypted: false,
   }
 }
 
-export function createdValidationCipher(newPassword: string): string {
+export function createValidationCipher(newPassword: string): string {
   if (!newPassword) throw 'Cannot generate cipher without a password'
-  const value = { creationDate: Date.now() }
+
+  const passwordHash = hash(newPassword)
+
+  const value = {
+    creationDate: Date.now(),
+    validationHash: hash(passwordHash),
+  }
+
   const encryptedCipher = String(
-    sjcl.encrypt(newPassword, JSON.stringify(value))
+    // this automatically generates random salt and random IV, and returns an object with these values
+    sjcl.encrypt(
+      passwordHash,
+      JSON.stringify(value)
+    ) as sjcl.SjclCipherEncrypted
   )
+
   return btoa(encryptedCipher)
 }
 
-// locker(null) /*?*/
-// const correctPassword = 'password'
-// const validationCipher = createdValidationCipher(correctPassword) /*?*/
-
-// try {
-//   locker(validationCipher) /*?*/
-// } catch (e) {
-//   console.log({ e }) // password required error
-// }
-
-// try {
-//   locker(validationCipher, 'wrong password') /*?*/
-// } catch (e) {
-//   console.log({ e }) // incorrect password error
-// }
-
-// try {
-//   const { encrypt, decrypt } = locker(validationCipher, correctPassword) /*?*/
-
-//   const encrypted = encrypt('some data') /*?*/
-
-//   const decrypted = decrypt(encrypted) /*?*/
-
-//   console.log({ decrypted })
-// } catch (e) {
-//   console.log({ e })
-// }
+function hash(data: string): string {
+  const hashBits = sjcl.hash.sha256.hash(data)
+  return sjcl.codec.hex.fromBits(hashBits)
+}
