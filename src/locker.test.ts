@@ -2,8 +2,14 @@ import locker, { createValidationCipher } from './locker'
 import faker from 'faker'
 
 describe('locker', () => {
-  it('should create an empty locker', () => {
-    locker({})
+
+  it('should create a locker without encryption', () => {
+    const { decrypt, encrypt } = locker({})
+
+    const value = faker.lorem.sentence()
+
+    expect(encrypt(value)).toEqual(value)
+    expect(decrypt(value)).toEqual(value)
   })
 
   it('should fail to create validation cipher without password', () => {
@@ -22,15 +28,6 @@ describe('locker', () => {
 
     expect(cipherJSON).toHaveProperty('salt')
     expect(cipherJSON).toHaveProperty('iv')
-  })
-
-  it('should create a locker without encryption', () => {
-    const { decrypt, encrypt } = locker({})
-
-    const value = faker.lorem.sentence()
-
-    expect(encrypt(value)).toEqual(value)
-    expect(decrypt(value)).toEqual(value)
   })
 
   it('should fail to create locker without a password or with incorrect password', () => {
