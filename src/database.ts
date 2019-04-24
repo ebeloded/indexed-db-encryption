@@ -230,8 +230,8 @@ export default async function getDatabase(password?: string) {
       console.log({ encryptedCollections })
     },
 
-    async decryptDatabase(key: string) {
-      if (await this.isEncrypted()) {
+    async decryptDatabase(password: string) {
+      if (this.isEncrypted()) {
       }
     },
   }
