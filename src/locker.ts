@@ -3,10 +3,7 @@ import sjcl from 'sjcl'
 export default function locker({
   password,
   encryptedCipherBase64String,
-}: {
-  password?: string
-  encryptedCipherBase64String?: string
-}) {
+}: LockerParams) {
   if (encryptedCipherBase64String) {
     if (!password) throw 'Password is required'
 
@@ -92,4 +89,9 @@ export function createValidationCipher(newPassword: string): string {
 function hash(data: string): string {
   const hashBits = sjcl.hash.sha256.hash(data)
   return sjcl.codec.hex.fromBits(hashBits)
+}
+
+type LockerParams = {
+  password?: string
+  encryptedCipherBase64String?: string
 }
