@@ -5,39 +5,33 @@ import getDatabase from './database'
 import faker from 'faker'
 import locker from './locker'
 
+const uid = () => faker.finance.bitcoinAddress()
+
 async function main() {
   // render(React.createElement(App), document.getElementById('root'));
 
-  const db = await getDatabase()
+  const db = await getDatabase('password')
 
-  console.log({ db })
+  // console.log({ db })
 
-  const [id, name] = [
-    faker.finance.bitcoinAddress(),
-    faker.finance.accountName(),
-  ]
-
-  // const newWallet = await db.addWallet(id, name);
-
-  // console.log({ newWallet })
+  // const newWallet = await db.addWallet(uid(), faker.finance.accountName())
 
   const wallets = await db.getWallets()
 
-  // console.table(wallets)
+  if (wallets.length) {
+    console.table(wallets)
 
-  // console.table(await db.getWallets())
+    const wallet = wallets[0]
 
-  const { id: walletId } = wallets[1]
+    // db.updateWallet(wallet.uid, {uid: 'uid2', name:'name2'})
 
-  // console.log({ walletId })
+    // db.addTransaction(wallet.uid, uid(), 'OTHER')
+    // db.addTransaction(wallet.uid, uid(), 'INCOME')
+    const transactions = await db.getTransactions(wallet.uid)
+    console.table(transactions)
+  }
 
-  // db.addTransaction(walletId, id, 'INCOME')
-
-  const transactions = await db.getTransactions(walletId)
-  // console.table(transactions)
-
-  db.encryptDatabase('password')
-
+  // db.encryptDatabase('password')
 }
 
 main()
