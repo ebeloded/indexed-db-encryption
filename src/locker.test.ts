@@ -4,12 +4,14 @@ import faker from 'faker'
 describe('locker', () => {
 
   it('should create a locker without encryption', () => {
-    const { decrypt, encrypt } = locker({})
+    const { decrypt, encrypt, isEncrypted } = locker({})
 
     const value = faker.lorem.sentence()
 
+    expect(isEncrypted).toEqual(false)
     expect(encrypt(value)).toEqual(value)
     expect(decrypt(value)).toEqual(value)
+
   })
 
   it('should fail to create validation cipher without password', () => {
@@ -46,17 +48,17 @@ describe('locker', () => {
 
     const encryptedCipherBase64String = createValidationCipher(password)
 
-    const { encrypt, decrypt } = locker({
+    const { encrypt, decrypt, isEncrypted, creationDate } = locker({
       encryptedCipherBase64String,
       password,
     })
 
     const testValue = faker.lorem.sentence()
-
     const encrypted = encrypt(testValue)
 
+    expect(isEncrypted).toEqual(true)
+    expect(creationDate).toBeDefined()
     expect(encrypted).not.toEqual(testValue)
-
     expect(decrypt(encrypted)).toEqual(testValue)
   })
 })

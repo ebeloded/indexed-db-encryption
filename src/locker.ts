@@ -19,8 +19,9 @@ export default function locker({
     }
 
     const { salt, iv } = encryptedCipher
+
     try {
-      const { validationHash } = JSON.parse(
+      const { validationHash, creationDate } = JSON.parse(
         sjcl.decrypt(passwordHash, encryptedCipherString)
       )
 
@@ -53,6 +54,9 @@ export default function locker({
         },
 
         isEncrypted: true,
+
+        creationDate,
+
       }
     } catch (e) {
       throw 'Incorrect password'
