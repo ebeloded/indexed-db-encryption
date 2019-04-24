@@ -1,7 +1,8 @@
 import lf from 'lovefield'
-import locker from './locker'
+import locker, { createValidationCipher } from './locker'
 
-const schemaBuilder = lf.schema.create('yoroi-encryptable', 1)
+// * during migration: increment version
+const schemaBuilder = lf.schema.create('yoroi-encryptable', 4)
 
 schemaBuilder
   .createTable('Security')
@@ -9,43 +10,65 @@ schemaBuilder
   .addColumn('value', lf.Type.STRING)
   .addPrimaryKey(['id'])
 
+const EncryptionID = 'Encryption'
+
 schemaBuilder
   .createTable('Wallets')
-  .addColumn('id', lf.Type.STRING)
+  .addColumn('id', lf.Type.INTEGER)
+  .addColumn('uid', lf.Type.STRING)
   .addColumn('name', lf.Type.STRING)
-  .addColumn('value', lf.Type.OBJECT)
-  .addPrimaryKey(['id'])
-
-const walletEncryptColumns = ['name', 'id']
+  // .addColumn('value', lf.Type.OBJECT) // ! object encryption not implemented yet
+  .addUnique('uniqueUID', ['uid'])
+  .addPrimaryKey(['id'], true)
 
 schemaBuilder
   .createTable('Transactions')
-  .addColumn('id', lf.Type.STRING)
-  .addColumn('walletId', lf.Type.STRING)
+  .addColumn('id', lf.Type.INTEGER)
+  .addColumn('uid', lf.Type.STRING)
+  .addColumn('walletUid', lf.Type.STRING)
   .addColumn('date', lf.Type.DATE_TIME)
   .addColumn('type', lf.Type.STRING)
-  .addPrimaryKey(['id'])
+  .addPrimaryKey(['id'], true)
+  .addUnique('uniqueUID', ['uid'])
   .addIndex('idxDate', ['date'], false, lf.Order.DESC)
-  .addForeignKey('fkWalletId', {
-    local: 'walletId',
-    ref: 'Wallets.id',
+  .addForeignKey('fkWalletUid', {
+    local: 'walletUid',
+    ref: 'Wallets.uid',
     action: lf.ConstraintAction.CASCADE,
   })
 
-const transactionEncryptColumns = ['id', 'name', 'walletId', 'type']
-
 let dbPromise = schemaBuilder.connect()
 
-export default async function getDatabase(passcode?: string) {
+export default async function getDatabase(password?: string) {
   const db = await dbPromise
+
+  //#region Security Check
+
+  const security = db.getSchema().table('Security')
+
+  const [encryption]: any = await db
+    .select()
+    .from(security)
+    .where(security.id.eq(EncryptionID))
+    .exec()
+
+  const encryptedCipherBase64String = encryption && encryption.value
+
+  const { decrypt, encrypt, isEncrypted } = locker({
+    password,
+    encryptedCipherBase64String,
+  })
+
+  //#endregion
+
   const wallets = db.getSchema().table('Wallets')
   const transactions = db.getSchema().table('Transactions')
 
   return {
-    async addWallet(id: string, name: string) {
+    async addWallet(uid: string, name: string) {
       const walletRow = wallets.createRow({
-        id,
-        name,
+        uid: encrypt(uid),
+        name: encrypt(name),
       })
 
       const [savedWallet] = await db
@@ -57,26 +80,41 @@ export default async function getDatabase(passcode?: string) {
       return savedWallet
     },
 
-    async removeWallet(id: string) {
+    async removeWallet(uid: string) {
       return db
         .delete()
         .from(wallets)
-        .where(wallets.id.eq(id))
+        .where(wallets.uid.eq(uid))
+        .exec()
+    },
+
+    async updateWallet(uid, newProps) {
+      return db
+        .update(wallets)
+        .set(wallets.uid, newProps.uid)
+        .set(wallets.name, newProps.name)
+        .where(wallets.id.eq(uid))
         .exec()
     },
 
     async getWallets(): Promise<any[]> {
-      return db
+      const encryptedWallets = await db
         .select()
         .from(wallets)
         .exec()
+
+      return encryptedWallets.map((w: any) => ({
+        ...w,
+        name: decrypt(w.name),
+        uid: decrypt(w.uid)
+      }))
     },
 
-    async addTransaction(walletId: string, id: string, type: string) {
+    async addTransaction(walletUid: string, uid: string, type: string) {
       const transactionRow = transactions.createRow({
-        id,
-        walletId,
-        type,
+        uid: encrypt(uid),
+        walletUid: encrypt(walletUid),
+        type: encrypt(uid),
         date: new Date(),
       })
 
@@ -89,49 +127,107 @@ export default async function getDatabase(passcode?: string) {
       return savedTransaction
     },
 
-    async getTransactions(walletId: string) {
-      return db
+    async getTransactions(walletUid: string) {
+      const encryptedTransactions = await db
         .select()
         .from(transactions)
-        .where(transactions['walletId'].eq(walletId))
+        .where(transactions['walletUid'].eq(walletUid))
         .exec()
+
+      return encryptedTransactions.map((t: any) => ({
+        ...t,
+        type: decrypt(t.type),
+        uid: decrypt(t.uid)
+      }))
     },
 
-    async isEncrypted() {
-      return false
+    isEncrypted() {
+      return isEncrypted
     },
 
-    async encryptDatabase(passcode: string) {
-      console.log('encryptDatabase', passcode)
-      if (!(await this.isEncrypted())) {
-        const { encrypt } = locker(passcode)
+    async encryptDatabase(password: string) {
+      const encryptedCipherBase64String = createValidationCipher(password)
+      const { encrypt: newEncrypt } = locker({
+        password,
+        encryptedCipherBase64String,
+      })
+      const decryptEncrypt = v => newEncrypt(decrypt(v))
 
-        const collections = {
-          transactions: await db
-            .select()
-            .from(transactions)
-            .exec(),
-          wallets: await db
-            .select()
-            .from(wallets)
-            .exec(),
-        }
+      const encryptTransaction = db.createTransaction()
 
-        console.log('collections', collections)
-
-        const encryptedTransactions = collections.transactions.map(
-          (transaction: any) => {
-            const encryptedTransaction = { ...transaction }
-            transactionEncryptColumns.forEach(column => {
-              // encryptedTransaction[column] = encrypt(transaction[column])
-            })
-            console.log({ transaction, encryptedTransaction })
-            return encryptedTransaction
-          }
-        )
-
-        const encryptionTransaction = db.createTransaction()
+      const collections = {
+        transactions: await db
+          .select()
+          .from(transactions)
+          .exec(),
+        wallets: await db
+          .select()
+          .from(wallets)
+          .exec(),
       }
+
+      console.log({ collections })
+
+      // TODO: investigate whether insertOrReplace has downsides, compared to calling .update(wallets).set([...]).set([...])
+
+      const encryptedWallets = collections.wallets.map((wallet: any) =>
+        wallets.createRow({
+          ...wallet,
+          uid: decryptEncrypt(wallet.uid),
+          name: decryptEncrypt(wallet.name),
+        })
+      )
+
+
+      const encryptWalletsQuery = db
+        .insertOrReplace()
+        .into(wallets)
+        .values(encryptedWallets)
+
+      const encryptedTransactions = collections.transactions.map(
+        (transaction: any) =>
+          transactions.createRow({
+            ...transaction,
+            uid: decryptEncrypt(transaction.uid),
+            type: decryptEncrypt(transaction.type),
+          })
+      )
+
+      const encryptTransactionsQuery = db
+        .insertOrReplace()
+        .into(transactions)
+        .values(encryptedTransactions)
+
+      const updateSecurityRecordsQuery = db
+        .insertOrReplace()
+        .into(security)
+        .values([
+          security.createRow({
+            id: EncryptionID,
+            value: encryptedCipherBase64String,
+          }),
+        ])
+
+      await updateSecurityRecordsQuery.exec()
+
+      await encryptTransaction.exec([
+        encryptWalletsQuery,
+        encryptTransactionsQuery,
+        updateSecurityRecordsQuery,
+      ])
+
+      const encryptedCollections = {
+        transactions: await db
+          .select()
+          .from(transactions)
+          .exec(),
+        wallets: await db
+          .select()
+          .from(wallets)
+          .exec(),
+      }
+
+      console.log({ encryptedCollections })
     },
 
     async decryptDatabase(key: string) {
