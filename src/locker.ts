@@ -1,9 +1,19 @@
 import sjcl from 'sjcl'
 
-export default function locker({
+type EncryptedData = string | object
+type DecryptedData = string | object | null
+
+type Locker = {
+  encrypt: (data: DecryptedData) => EncryptedData
+  decrypt: (encryptedData: EncryptedData) => DecryptedData
+  isEncrypted: boolean
+  creationDate?: Date
+}
+
+export function createLocker({
   password,
   encryptedCipherBase64String,
-}: LockerParams) {
+}: LockerParams): Locker {
   if (encryptedCipherBase64String) {
     if (!password) throw 'Password is required'
 
@@ -30,9 +40,11 @@ export default function locker({
       }
 
       return {
-        encrypt(data: string): string {
+        encrypt(data) {
+          const dataString = JSON.stringify({ value: data })
+
           const encryptedCipherData = String(
-            sjcl.encrypt(passwordHash, data, { salt, iv })
+            sjcl.encrypt(passwordHash, dataString, { salt, iv })
           )
 
           const { ct } = JSON.parse(encryptedCipherData)
@@ -40,31 +52,32 @@ export default function locker({
           return ct
         },
 
-        decrypt(ct: string): string {
-          const decryptValue = sjcl.decrypt(
+        decrypt(encryptedData) {
+          const decryptedMessageString = sjcl.decrypt(
             passwordHash,
-            JSON.stringify({ ct }),
+            JSON.stringify({ ct: encryptedData }),
             {
               salt,
               iv,
             }
           )
 
-          return decryptValue
+          const { value } = JSON.parse(decryptedMessageString)
+
+          return value
         },
 
         isEncrypted: true,
 
         creationDate,
-
       }
     } catch (e) {
       throw 'Incorrect password'
     }
   }
   return {
-    encrypt: (message: string) => message,
-    decrypt: (ciphertext: string) => ciphertext,
+    encrypt: data => data,
+    decrypt: encryptedData => encryptedData,
     isEncrypted: false,
   }
 }
