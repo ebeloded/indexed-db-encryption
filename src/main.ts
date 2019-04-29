@@ -3,7 +3,6 @@ import { render } from 'react-dom'
 import App from './components/App'
 import getDatabase from './database'
 import faker from 'faker'
-import locker from './locker'
 
 const uid = () => faker.finance.bitcoinAddress()
 
@@ -14,12 +13,16 @@ async function main() {
 
   // console.log({ db })
 
-  // const newWallet = await db.addWallet(uid(), faker.finance.accountName())
+  // const newWallet = await db.addWallet(uid(), faker.finance.accountName(), {
+  //   value: Number(faker.finance.amount(0, 100)),
+  // })
+
+  // console.log({newWallet})
 
   const wallets = await db.getWallets()
 
   if (wallets.length) {
-    console.table(wallets)
+    console.log({wallets})
 
     const wallet = wallets[0]
 

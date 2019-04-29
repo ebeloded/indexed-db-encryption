@@ -1,5 +1,5 @@
 import lf from 'lovefield'
-import locker, { createValidationCipher } from './locker'
+import { createLocker, createValidationCipher } from './locker'
 
 // * during migration: increment version
 const schemaBuilder = lf.schema.create('yoroi-encryptable', 4)
@@ -17,7 +17,7 @@ schemaBuilder
   .addColumn('id', lf.Type.INTEGER)
   .addColumn('uid', lf.Type.STRING)
   .addColumn('name', lf.Type.STRING)
-  // .addColumn('value', lf.Type.OBJECT) // ! object encryption not implemented yet
+  .addColumn('value', lf.Type.OBJECT)
   .addUnique('uniqueUID', ['uid'])
   .addPrimaryKey(['id'], true)
 
@@ -54,7 +54,7 @@ export default async function getDatabase(password?: string) {
 
   const encryptedCipherBase64String = encryption && encryption.value
 
-  const { decrypt, encrypt, isEncrypted } = locker({
+  const { decrypt, encrypt, isEncrypted } = createLocker({
     password,
     encryptedCipherBase64String,
   })
@@ -65,10 +65,11 @@ export default async function getDatabase(password?: string) {
   const transactions = db.getSchema().table('Transactions')
 
   return {
-    async addWallet(uid: string, name: string) {
+    async addWallet(uid: string, name: string, value: object = null) {
       const walletRow = wallets.createRow({
         uid: encrypt(uid),
         name: encrypt(name),
+        value: encrypt(value),
       })
 
       const [savedWallet] = await db
@@ -106,7 +107,8 @@ export default async function getDatabase(password?: string) {
       return encryptedWallets.map((w: any) => ({
         ...w,
         name: decrypt(w.name),
-        uid: decrypt(w.uid)
+        uid: decrypt(w.uid),
+        value: decrypt(w.value),
       }))
     },
 
@@ -137,7 +139,7 @@ export default async function getDatabase(password?: string) {
       return encryptedTransactions.map((t: any) => ({
         ...t,
         type: decrypt(t.type),
-        uid: decrypt(t.uid)
+        uid: decrypt(t.uid),
       }))
     },
 
@@ -147,7 +149,7 @@ export default async function getDatabase(password?: string) {
 
     async encryptDatabase(password: string) {
       const encryptedCipherBase64String = createValidationCipher(password)
-      const { encrypt: newEncrypt } = locker({
+      const { encrypt: newEncrypt } = createLocker({
         password,
         encryptedCipherBase64String,
       })
@@ -174,10 +176,10 @@ export default async function getDatabase(password?: string) {
         wallets.createRow({
           ...wallet,
           uid: decryptEncrypt(wallet.uid),
+          value: decryptEncrypt(wallet.value),
           name: decryptEncrypt(wallet.name),
         })
       )
-
 
       const encryptWalletsQuery = db
         .insertOrReplace()
