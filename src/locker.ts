@@ -80,7 +80,7 @@ export function createLocker({
 
         isEncrypted: true,
 
-        creationDate,
+        creationDate: new Date(creationDate),
       }
     } catch (e) {
       throw 'Incorrect password'

@@ -58,7 +58,7 @@ describe('locker', () => {
     })
 
     expect(isEncrypted).toEqual(true)
-    expect(creationDate).toBeDefined()
+    expect(creationDate).toBeInstanceOf(Date)
   })
 
   describe('encryption/decryption', () => {
