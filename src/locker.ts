@@ -1,7 +1,7 @@
 import sjcl from 'sjcl'
 
-type EncryptedData = string | object
-type DecryptedData = string | object | null
+type EncryptedData = string | object | number
+type DecryptedData = string | object | number | null
 
 type Locker = {
   encrypt: (data: DecryptedData) => EncryptedData
@@ -31,9 +31,11 @@ export function createLocker({
     const { salt, iv } = encryptedCipher
 
     try {
-      const { validationHash, creationDate } = JSON.parse(
-        sjcl.decrypt(passwordHash, encryptedCipherString)
-      )
+      const {
+        validationHash,
+        creationDate,
+        numberObfuscationOffset,
+      } = JSON.parse(sjcl.decrypt(passwordHash, encryptedCipherString))
 
       if (hash(passwordHash) !== validationHash) {
         throw 'Invalid Cipher Contents'
@@ -41,7 +43,11 @@ export function createLocker({
 
       return {
         encrypt(data) {
-          const dataString = JSON.stringify({ value: data })
+          let value = data
+          if (typeof value === 'number') {
+            return value - numberObfuscationOffset
+          }
+          const dataString = JSON.stringify({ value })
 
           const encryptedCipherData = String(
             sjcl.encrypt(passwordHash, dataString, { salt, iv })
@@ -53,6 +59,11 @@ export function createLocker({
         },
 
         decrypt(encryptedData) {
+
+          if (typeof encryptedData === 'number') {
+            return encryptedData + numberObfuscationOffset
+          }
+
           const decryptedMessageString = sjcl.decrypt(
             passwordHash,
             JSON.stringify({ ct: encryptedData }),
@@ -86,9 +97,11 @@ export function createValidationCipher(newPassword: string): string {
   if (!newPassword) throw 'Cannot generate cipher without a password'
 
   const passwordHash = hash(newPassword)
+  const DATE_OBFUSCATION_MAX = Date.now() - new Date('2017/10/1').getTime()
 
-  const value = {
+  const cipherContents = {
     creationDate: Date.now(),
+    numberObfuscationOffset: Math.floor((Math.random() * DATE_OBFUSCATION_MAX)),
     validationHash: hash(passwordHash),
   }
 
@@ -96,7 +109,7 @@ export function createValidationCipher(newPassword: string): string {
     // this automatically generates random salt and random IV, and returns an object with these values
     sjcl.encrypt(
       passwordHash,
-      JSON.stringify(value)
+      JSON.stringify(cipherContents)
     ) as sjcl.SjclCipherEncrypted
   )
 

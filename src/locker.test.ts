@@ -98,5 +98,15 @@ describe('locker', () => {
 
       expect(decrypt(encrypt(null))).toEqual(null)
     })
+
+    it('should obfuscate timestamps', () => {
+      const testDate = new Date().getTime()
+
+      const obfuscated = encrypt(testDate)
+
+      expect(typeof obfuscated).toEqual(typeof testDate)
+      expect(obfuscated).not.toEqual(testDate)
+      expect(decrypt(obfuscated)).toEqual(testDate)
+    })
   })
 })
